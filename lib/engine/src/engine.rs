@@ -18,7 +18,7 @@ pub struct UCCIEngine {
 }
 
 impl UCCIEngine {
-    pub fn new(book_data: Option< &str>) -> Self {
+    pub fn new(book_data: Option<&str>) -> Self {
         let mut book = vec![];
         if let Some(data) = book_data {
             for line in data.split("\n") {
@@ -26,18 +26,29 @@ impl UCCIEngine {
                     continue;
                 }
                 let mut tokens = line.splitn(3, " ");
-                let m = tokens.next().unwrap();
-                let weight = tokens.next().unwrap();
-                let fen = tokens.next().unwrap();
+                let m = tokens
+                    .next()
+                    .unwrap();
+                let weight = tokens
+                    .next()
+                    .unwrap();
+                let fen = tokens
+                    .next()
+                    .unwrap();
                 let board = Board::from_fen(fen);
                 book.push(PreLoad {
                     zobrist_value: board.zobrist_value,
                     zobrist_value_check: board.zobrist_value_lock,
                     best_move: m.to_owned(),
-                    weight: weight.parse::<i32>().unwrap(),
+                    weight: weight
+                        .parse::<i32>()
+                        .unwrap(),
                 });
             }
-            book.sort_by(|a, b| a.zobrist_value.cmp(&b.zobrist_value));
+            book.sort_by(|a, b| {
+                a.zobrist_value
+                    .cmp(&b.zobrist_value)
+            });
             println!("加载开局库完成，共加载{}个局面", book.len());
             println!("{:?}", book[1000]);
         }
@@ -49,16 +60,33 @@ impl UCCIEngine {
     pub fn search_in_book(&self) -> Option<String> {
         let candidates = self
             .book
-            .binary_search_by(|probe| probe.zobrist_value.cmp(&self.board.zobrist_value))
+            .binary_search_by(|probe| {
+                probe
+                    .zobrist_value
+                    .cmp(
+                        &self
+                            .board
+                            .zobrist_value,
+                    )
+            })
             .map(|i| &self.book[i])
             .into_iter()
-            .filter(|x| x.zobrist_value_check == self.board.zobrist_value_lock)
+            .filter(|x| {
+                x.zobrist_value_check
+                    == self
+                        .board
+                        .zobrist_value_lock
+            })
             .collect::<Vec<&PreLoad>>();
         if candidates.len() > 0 {
             let mut buf = [0; 4];
             getrandom(&mut buf).unwrap();
             let index = i32::from_be_bytes(buf) % candidates.len() as i32;
-            Some(candidates[index as usize].best_move.clone())
+            Some(
+                candidates[index as usize]
+                    .best_move
+                    .clone(),
+            )
         } else {
             None
         }
@@ -67,17 +95,25 @@ impl UCCIEngine {
     pub fn start(&mut self) {
         loop {
             let mut cmd = String::new();
-            io::stdin().read_line(&mut cmd).unwrap();
+            io::stdin()
+                .read_line(&mut cmd)
+                .unwrap();
             cmd = cmd.replace("\n", "");
             if cmd == "quit" {
                 break;
             }
             let mut token = cmd.splitn(2, " ");
-            let cmd = token.next().unwrap();
+            let cmd = token
+                .next()
+                .unwrap();
             match cmd {
                 "ucci" => self.info(),
                 "isready" => self.is_ready(),
-                "position" => self.position(token.next().unwrap()),
+                "position" => self.position(
+                    token
+                        .next()
+                        .unwrap(),
+                ),
                 "go" => {
                     self.go(token
                         .next()
@@ -118,15 +154,23 @@ impl UCCIEngine {
                 self.board = Board::init();
             }
             if let Some(moves) = captures.name("moves") {
-                for m in moves.as_str().split(" ") {
+                for m in moves
+                    .as_str()
+                    .split(" ")
+                {
                     let (from, to) = m.split_at(2);
-                    self.board.apply_move(&Move {
-                        player: self.board.turn,
-                        from: from.into(),
-                        to: to.into(),
-                        chess: self.board.chess_at(from.into()),
-                        capture: self.board.chess_at(to.into()),
-                    });
+                    self.board
+                        .apply_move(&Move {
+                            player: self.board.turn,
+                            from: from.into(),
+                            to: to.into(),
+                            chess: self
+                                .board
+                                .chess_at(from.into()),
+                            capture: self
+                                .board
+                                .chess_at(to.into()),
+                        });
                 }
             }
         }
@@ -137,7 +181,9 @@ impl UCCIEngine {
             println!("bestmove {}", m);
             return;
         }
-        let (value, best_move) = self.board.iterative_deepening(depth);
+        let (value, best_move) = self
+            .board
+            .iterative_deepening(depth);
         if let Some(m) = best_move {
             if m.is_valid() {
                 println!(
@@ -158,6 +204,8 @@ impl UCCIEngine {
 
 #[cfg(test)]
 mod tests {
+    use crate::engine::UCCIEngine;
+
     #[test]
     fn test_ucci_engine() {
         let mut engine = UCCIEngine::new(None);
@@ -169,10 +217,14 @@ mod tests {
         // engine.position("startpos moves b0c2");
         engine.go(4);
         println!("{:?}", engine.board.chesses);
-        println!("{} {}", engine.board.gen_counter, engine.board.counter);
+        println!(
+            "{} {}",
+            engine
+                .board
+                .gen_counter,
+            engine.board.counter
+        );
     }
-
-    use crate::engine::UCCIEngine;
 
     #[test]
     fn test_kill() {
@@ -181,10 +233,18 @@ mod tests {
         engine.is_ready();
         engine.position("fen 4k4/9/9/9/9/9/9/4p4/9/5K3 b - - 0 1");
         // engine.position("startpos moves b0c2");
-        let moves = engine.board.generate_move(false);
+        let moves = engine
+            .board
+            .generate_move(false);
         println!("{:?}", moves);
         println!("{:?}", engine.board.chesses);
         engine.go(8);
-        println!("{} {}", engine.board.gen_counter, engine.board.counter);
+        println!(
+            "{} {}",
+            engine
+                .board
+                .gen_counter,
+            engine.board.counter
+        );
     }
 }

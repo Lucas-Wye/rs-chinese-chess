@@ -5,7 +5,6 @@ extern crate engine;
 use engine::engine::UCCIEngine;
 
 fn main() {
-
     let p = module_path!();
 
     dbg!(p);

@@ -482,13 +482,17 @@ impl Board {
     pub fn from_fen(fen: &str) -> Self {
         let mut board = Board::empty();
         let mut parts = fen.split(" ");
-        let pos = parts.next().unwrap();
+        let pos = parts
+            .next()
+            .unwrap();
         let mut i = 0;
         for row in pos.split("/") {
             let mut j = 0;
             for col in row.chars() {
                 if col.is_numeric() {
-                    j += col.to_digit(10).unwrap() as i32;
+                    j += col
+                        .to_digit(10)
+                        .unwrap() as i32;
                 } else {
                     if let Some(chess) = (FEN_MAP).get(&col) {
                         board.set_chess(Position::new(i, j), chess.to_owned());
@@ -500,7 +504,9 @@ impl Board {
         }
         board.zobrist_value = ZOBRIST_TABLE.calc_chesses(&board.chesses);
         board.zobrist_value_lock = ZOBRIST_TABLE_LOCK.calc_chesses(&board.chesses);
-        let turn = parts.next().unwrap();
+        let turn = parts
+            .next()
+            .unwrap();
         if turn == "b" {
             board.turn = Player::Black;
         }
@@ -517,7 +523,8 @@ impl Board {
     pub fn do_move(&mut self, m: &Move) {
         self.apply_move(m);
         self.distance += 1;
-        self.move_history.push(m.clone());
+        self.move_history
+            .push(m.clone());
     }
     pub fn undo_move(&mut self, m: &Move) {
         let chess = self.chess_at(m.to);
@@ -527,7 +534,8 @@ impl Board {
         self.zobrist_value_lock = ZOBRIST_TABLE_LOCK.undo_move(self.zobrist_value_lock, m);
         self.turn = m.player;
         self.distance -= 1;
-        self.move_history.pop();
+        self.move_history
+            .pop();
     }
     pub fn chess_at(&self, pos: Position) -> Chess {
         if in_board(pos) {
@@ -541,7 +549,14 @@ impl Board {
     }
     pub fn has_chess_between(&self, posa: Position, posb: Position) -> bool {
         if posa.row == posb.row {
-            for j in posa.col.min(posb.col) + 1..posb.col.max(posa.col) {
+            for j in posa
+                .col
+                .min(posb.col)
+                + 1
+                ..posb
+                    .col
+                    .max(posa.col)
+            {
                 if self
                     .chess_at(Position::new(posa.row, j))
                     .chess_type()
@@ -551,7 +566,14 @@ impl Board {
                 }
             }
         } else if posa.col == posb.col {
-            for i in posa.row.min(posb.row) + 1..posb.row.max(posa.row) {
+            for i in posa
+                .row
+                .min(posb.row)
+                + 1
+                ..posb
+                    .row
+                    .max(posa.row)
+            {
                 if self
                     .chess_at(Position::new(i, posa.col))
                     .chess_type()
@@ -584,8 +606,12 @@ impl Board {
         None
     }
     pub fn king_eye_to_eye(&self) -> bool {
-        let posa = self.king_position(Player::Red).unwrap();
-        let posb = self.king_position(Player::Black).unwrap();
+        let posa = self
+            .king_position(Player::Red)
+            .unwrap();
+        let posb = self
+            .king_position(Player::Black)
+            .unwrap();
         if posa.col == posb.col {
             !self.has_chess_between(posa, posb)
         } else {
@@ -593,13 +619,21 @@ impl Board {
         }
     }
     pub fn is_checked(&self, player: Player) -> bool {
-        let position_base = self.king_position(player).unwrap();
+        let position_base = self
+            .king_position(player)
+            .unwrap();
 
         // 是否被炮将军
         let targets = self.generate_move_for_chess_type(ChessType::Cannon, position_base);
         for pos in targets {
-            if self.chess_at(pos).belong_to(player.next()) {
-                if let Some(ChessType::Cannon) = self.chess_at(pos).chess_type() {
+            if self
+                .chess_at(pos)
+                .belong_to(player.next())
+            {
+                if let Some(ChessType::Cannon) = self
+                    .chess_at(pos)
+                    .chess_type()
+                {
                     return true;
                 }
             }
@@ -607,8 +641,14 @@ impl Board {
         // 是否被车将军
         let targets = self.generate_move_for_chess_type(ChessType::Rook, position_base);
         for pos in targets {
-            if self.chess_at(pos).belong_to(player.next()) {
-                if let Some(ChessType::Rook) = self.chess_at(pos).chess_type() {
+            if self
+                .chess_at(pos)
+                .belong_to(player.next())
+            {
+                if let Some(ChessType::Rook) = self
+                    .chess_at(pos)
+                    .chess_type()
+                {
                     return true;
                 }
             }
@@ -616,25 +656,83 @@ impl Board {
 
         // 是否被马将军
         let mut targets = vec![];
-        if self.chess_at(position_base.up(1).left(1)) == Chess::None {
-            targets.push(position_base.up(2).left(1));
-            targets.push(position_base.up(1).left(2));
+        if self.chess_at(
+            position_base
+                .up(1)
+                .left(1),
+        ) == Chess::None
+        {
+            targets.push(
+                position_base
+                    .up(2)
+                    .left(1),
+            );
+            targets.push(
+                position_base
+                    .up(1)
+                    .left(2),
+            );
         }
-        if self.chess_at(position_base.down(1).left(1)) == Chess::None {
-            targets.push(position_base.down(2).left(1));
-            targets.push(position_base.down(1).left(2));
+        if self.chess_at(
+            position_base
+                .down(1)
+                .left(1),
+        ) == Chess::None
+        {
+            targets.push(
+                position_base
+                    .down(2)
+                    .left(1),
+            );
+            targets.push(
+                position_base
+                    .down(1)
+                    .left(2),
+            );
         }
-        if self.chess_at(position_base.up(1).right(1)) == Chess::None {
-            targets.push(position_base.up(2).right(1));
-            targets.push(position_base.up(1).right(2));
+        if self.chess_at(
+            position_base
+                .up(1)
+                .right(1),
+        ) == Chess::None
+        {
+            targets.push(
+                position_base
+                    .up(2)
+                    .right(1),
+            );
+            targets.push(
+                position_base
+                    .up(1)
+                    .right(2),
+            );
         }
-        if self.chess_at(position_base.down(1).right(1)) == Chess::None {
-            targets.push(position_base.down(2).right(1));
-            targets.push(position_base.down(1).right(2));
+        if self.chess_at(
+            position_base
+                .down(1)
+                .right(1),
+        ) == Chess::None
+        {
+            targets.push(
+                position_base
+                    .down(2)
+                    .right(1),
+            );
+            targets.push(
+                position_base
+                    .down(1)
+                    .right(2),
+            );
         }
         for pos in targets {
-            if self.chess_at(pos).belong_to(player.next()) {
-                if let Some(ChessType::Knight) = self.chess_at(pos).chess_type() {
+            if self
+                .chess_at(pos)
+                .belong_to(player.next())
+            {
+                if let Some(ChessType::Knight) = self
+                    .chess_at(pos)
+                    .chess_type()
+                {
                     return true;
                 }
             }
@@ -650,8 +748,14 @@ impl Board {
                 position_base.down(1)
             },
         ] {
-            if self.chess_at(pos).belong_to(player.next()) {
-                if let Some(ChessType::Pawn) = self.chess_at(pos).chess_type() {
+            if self
+                .chess_at(pos)
+                .belong_to(player.next())
+            {
+                if let Some(ChessType::Pawn) = self
+                    .chess_at(pos)
+                    .chess_type()
+                {
                     return true;
                 }
             }
@@ -675,54 +779,146 @@ impl Board {
             }
             ChessType::Advisor => {
                 targets.append(&mut vec![
-                    position_base.up(1).left(1),
-                    position_base.up(1).right(1),
-                    position_base.down(1).left(1),
-                    position_base.down(1).right(1),
+                    position_base
+                        .up(1)
+                        .left(1),
+                    position_base
+                        .up(1)
+                        .right(1),
+                    position_base
+                        .down(1)
+                        .left(1),
+                    position_base
+                        .down(1)
+                        .right(1),
                 ]);
             }
             ChessType::Bishop => {
-                if self.chess_at(position_base.up(1).left(1)) == Chess::None {
-                    targets.push(position_base.up(2).left(2));
+                if self.chess_at(
+                    position_base
+                        .up(1)
+                        .left(1),
+                ) == Chess::None
+                {
+                    targets.push(
+                        position_base
+                            .up(2)
+                            .left(2),
+                    );
                 }
-                if self.chess_at(position_base.up(1).right(1)) == Chess::None {
-                    targets.push(position_base.up(2).right(2));
+                if self.chess_at(
+                    position_base
+                        .up(1)
+                        .right(1),
+                ) == Chess::None
+                {
+                    targets.push(
+                        position_base
+                            .up(2)
+                            .right(2),
+                    );
                 }
-                if self.chess_at(position_base.down(1).left(1)) == Chess::None {
-                    targets.push(position_base.down(2).left(2));
+                if self.chess_at(
+                    position_base
+                        .down(1)
+                        .left(1),
+                ) == Chess::None
+                {
+                    targets.push(
+                        position_base
+                            .down(2)
+                            .left(2),
+                    );
                 }
-                if self.chess_at(position_base.down(1).right(1)) == Chess::None {
-                    targets.push(position_base.down(2).right(2));
+                if self.chess_at(
+                    position_base
+                        .down(1)
+                        .right(1),
+                ) == Chess::None
+                {
+                    targets.push(
+                        position_base
+                            .down(2)
+                            .right(2),
+                    );
                 }
             }
             ChessType::Knight => {
                 if self.turn == Player::Red {
                     if self.chess_at(position_base.up(1)) == Chess::None {
-                        targets.push(position_base.up(2).left(1));
-                        targets.push(position_base.up(2).right(1));
+                        targets.push(
+                            position_base
+                                .up(2)
+                                .left(1),
+                        );
+                        targets.push(
+                            position_base
+                                .up(2)
+                                .right(1),
+                        );
                     }
                     if self.chess_at(position_base.down(1)) == Chess::None {
-                        targets.push(position_base.down(2).left(1));
-                        targets.push(position_base.down(2).right(1));
+                        targets.push(
+                            position_base
+                                .down(2)
+                                .left(1),
+                        );
+                        targets.push(
+                            position_base
+                                .down(2)
+                                .right(1),
+                        );
                     }
                 } else {
                     if self.chess_at(position_base.down(1)) == Chess::None {
-                        targets.push(position_base.down(2).left(1));
-                        targets.push(position_base.down(2).right(1));
+                        targets.push(
+                            position_base
+                                .down(2)
+                                .left(1),
+                        );
+                        targets.push(
+                            position_base
+                                .down(2)
+                                .right(1),
+                        );
                     }
                     if self.chess_at(position_base.up(1)) == Chess::None {
-                        targets.push(position_base.up(2).left(1));
-                        targets.push(position_base.up(2).right(1));
+                        targets.push(
+                            position_base
+                                .up(2)
+                                .left(1),
+                        );
+                        targets.push(
+                            position_base
+                                .up(2)
+                                .right(1),
+                        );
                     }
                 }
 
                 if self.chess_at(position_base.left(1)) == Chess::None {
-                    targets.push(position_base.up(1).left(2));
-                    targets.push(position_base.down(1).left(2));
+                    targets.push(
+                        position_base
+                            .up(1)
+                            .left(2),
+                    );
+                    targets.push(
+                        position_base
+                            .down(1)
+                            .left(2),
+                    );
                 }
                 if self.chess_at(position_base.right(1)) == Chess::None {
-                    targets.push(position_base.up(1).right(2));
-                    targets.push(position_base.down(1).right(2));
+                    targets.push(
+                        position_base
+                            .up(1)
+                            .right(2),
+                    );
+                    targets.push(
+                        position_base
+                            .down(1)
+                            .right(2),
+                    );
                 }
             }
             ChessType::Rook => {
@@ -866,9 +1062,14 @@ impl Board {
                             };
 
                             if valid {
-                                if !self.chess_at(target).belong_to(self.turn)
+                                if !self
+                                    .chess_at(target)
+                                    .belong_to(self.turn)
                                     && (!capture_only
-                                        || self.chess_at(target).chess_type().is_some())
+                                        || self
+                                            .chess_at(target)
+                                            .chess_type()
+                                            .is_some())
                                 {
                                     moves
                                         .push(move_base.with_target(target, self.chess_at(target)));
@@ -880,8 +1081,20 @@ impl Board {
             }
         }
         moves.sort_by(|a, b| {
-            (self.chess_at(b.to).value() - self.chess_at(b.from).value())
-                .cmp(&(self.chess_at(a.to).value() - self.chess_at(a.from).value()))
+            (self
+                .chess_at(b.to)
+                .value()
+                - self
+                    .chess_at(b.from)
+                    .value())
+            .cmp(
+                &(self
+                    .chess_at(a.to)
+                    .value()
+                    - self
+                        .chess_at(a.from)
+                        .value()),
+            )
         });
         moves
     }
@@ -964,8 +1177,15 @@ impl Board {
         // 优先尝试迭代深度搜索的上一层搜索结果
         let mut moves = self.generate_move(false);
         // 如果符合上次搜索的着法线路，那么优先按此线路搜索下去
-        for (i, m) in self.best_moves_last.iter().enumerate() {
-            if let Some(ml) = self.move_history.get(i) {
+        for (i, m) in self
+            .best_moves_last
+            .iter()
+            .enumerate()
+        {
+            if let Some(ml) = self
+                .move_history
+                .get(i)
+            {
                 if m != ml {
                     break;
                 }
@@ -1064,7 +1284,8 @@ impl Board {
                     return (v, bm);
                 }
                 self.best_moves_last = vec![];
-                self.best_moves_last.reverse();
+                self.best_moves_last
+                    .reverse();
                 println!("第{}层: {:?}", depth, self.best_moves_last);
             }
         } else {
@@ -1086,25 +1307,29 @@ mod tests {
             board.generate_move(false);
         }
         assert_eq!(
-            Board::init().generate_move(false).len(),
+            Board::init()
+                .generate_move(false)
+                .len(),
             5 + 24 + 4 + 4 + 4 + 2 + 1
         );
     }
     #[test]
     fn test_is_checked() {
         let mut board = Board::init();
-        for i in 0..10_000 {
+        for _i in 0..10_000 {
             board.is_checked(Player::Red);
         }
         assert_eq!(
-            Board::init().generate_move(false).len(),
+            Board::init()
+                .generate_move(false)
+                .len(),
             5 + 24 + 4 + 4 + 4 + 2 + 1
         );
     }
     #[test]
     fn test_move_and_unmove() {
         let mut board = Board::init();
-        for i in 0..8_000 {
+        for _i in 0..8_000 {
             let m = Move {
                 player: Player::Red,
                 from: Position::new(0, 0),
@@ -1116,7 +1341,9 @@ mod tests {
             board.undo_move(&m);
         }
         assert_eq!(
-            Board::init().generate_move(false).len(),
+            Board::init()
+                .generate_move(false)
+                .len(),
             5 + 24 + 4 + 4 + 4 + 2 + 1
         );
     }

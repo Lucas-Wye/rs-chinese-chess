@@ -38,8 +38,11 @@ impl Zobristable {
             for j in 0..BOARD_WIDTH {
                 let chess = chesses[i as usize][j as usize];
                 if let Some(ct) = chess.chess_type() {
-                    value ^= self.hash_table[chess.player().unwrap().value() as usize]
-                        [(i * BOARD_WIDTH + j) as usize][ct.value() as usize];
+                    value ^= self.hash_table[chess
+                        .player()
+                        .unwrap()
+                        .value() as usize][(i * BOARD_WIDTH + j) as usize]
+                        [ct.value() as usize];
                 }
             }
         }
@@ -48,17 +51,38 @@ impl Zobristable {
     pub fn apply_move(&self, origin: u64, m: &Move) -> u64 {
         let mut value = origin;
         // 把棋子从原位置拿起来
-        value ^= self.hash_table[m.chess.player().unwrap().value() as usize]
-            [(m.from.row * BOARD_WIDTH + m.from.col) as usize]
-            [m.chess.chess_type().unwrap().value() as usize];
+        value ^= self.hash_table[m
+            .chess
+            .player()
+            .unwrap()
+            .value() as usize][(m.from.row * BOARD_WIDTH + m.from.col) as usize][m
+            .chess
+            .chess_type()
+            .unwrap()
+            .value()
+            as usize];
         // 放到新的位置
-        value ^= self.hash_table[m.chess.player().unwrap().value() as usize]
-            [(m.to.row * BOARD_WIDTH + m.to.col) as usize]
-            [m.chess.chess_type().unwrap().value() as usize];
+        value ^= self.hash_table[m
+            .chess
+            .player()
+            .unwrap()
+            .value() as usize][(m.to.row * BOARD_WIDTH + m.to.col) as usize][m
+            .chess
+            .chess_type()
+            .unwrap()
+            .value()
+            as usize];
         // 如果有吃子，把被吃掉的子拿起来
-        if let Some(ct) = m.capture.chess_type() {
-            value ^= self.hash_table[m.capture.player().unwrap().value() as usize]
-                [(m.to.row * BOARD_WIDTH + m.to.col) as usize][ct.value() as usize];
+        if let Some(ct) = m
+            .capture
+            .chess_type()
+        {
+            value ^= self.hash_table[m
+                .capture
+                .player()
+                .unwrap()
+                .value() as usize][(m.to.row * BOARD_WIDTH + m.to.col) as usize]
+                [ct.value() as usize];
         }
         value
     }
@@ -70,8 +94,8 @@ impl Zobristable {
 }
 
 mod test {
-    use crate::{zobrist::*, board::*};
-
+    use crate::board::*;
+    use crate::zobrist::*;
 
     #[test]
     fn test_zobrist() {
