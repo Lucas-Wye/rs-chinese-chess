@@ -1,3 +1,20 @@
+[package]
+edition = "2021"
+name = "chchess"
+version = "0.1.0"
+
+[dependencies]
+bytes = "1.6.1"
+anyhow = "1.0.86"
+fltk = {version = "1.4.32", features = ["fltk-bundled"]}
+engine = { path = "./lib/engine" }
+
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "z"
+panic = "abort"
+
 [workspace]
 members = ["lib/*"]
-resolver = "2"

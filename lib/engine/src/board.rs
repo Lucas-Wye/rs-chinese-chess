@@ -1,8 +1,9 @@
+use rand::rngs::StdRng;
+use rand::{Rng, SeedableRng};
 use std::vec;
 
-use crate::constant::{
-    FEN_MAP, KILL, MAX, MAX_DEPTH, MIN, RECORD_SIZE, ZOBRIST_TABLE, ZOBRIST_TABLE_LOCK,
-};
+use crate::constant::{FEN_MAP, KILL, MAX, MAX_DEPTH, MIN, RECORD_SIZE, ZOBRIST_TABLE, ZOBRIST_TABLE_LOCK};
+use std::collections::HashSet;
 
 pub const BOARD_WIDTH: i32 = 9;
 pub const BOARD_HEIGHT: i32 = 10;
@@ -16,20 +17,13 @@ pub enum Chess {
 
 impl Chess {
     pub fn value(&self) -> i32 {
-        if let Some(ct) = self.chess_type() {
-            ct.type_value()
-        } else {
-            0x0
+        match self.chess_type() {
+            Some(ct) => ct.type_value(),
+            None => 0,
         }
     }
     pub fn belong_to(&self, player: Player) -> bool {
-        if let Chess::Black(_) = self {
-            player == Player::Black
-        } else if let Chess::Red(_) = self {
-            player == Player::Red
-        } else {
-            false
-        }
+        Some(player) == self.player()
     }
     pub fn chess_type(&self) -> Option<ChessType> {
         match self {
@@ -59,6 +53,17 @@ pub enum ChessType {
 }
 
 impl ChessType {
+    pub fn rand_value(i: usize) -> ChessType {
+        match i {
+            (0..5) => ChessType::Pawn,
+            (5..7) => ChessType::Advisor,
+            (7..9) => ChessType::Bishop,
+            (9..11) => ChessType::Knight,
+            (11..13) => ChessType::Rook,
+            (13..15) => ChessType::Cannon,
+            _ => ChessType::Pawn,
+        }
+    }
     pub fn value(&self) -> i32 {
         match self {
             ChessType::King => 1,
@@ -81,15 +86,39 @@ impl ChessType {
             ChessType::Pawn => 2,
         }
     }
-    pub fn move_value(&self) -> i32 {
-        match self {
-            ChessType::King => 1,
-            ChessType::Advisor => 2,
-            ChessType::Bishop => 2,
-            ChessType::Knight => 5,
-            ChessType::Rook => 6,
-            ChessType::Cannon => 4,
-            ChessType::Pawn => 3,
+
+    // pub fn move_value(&self) -> i32 {
+    //     match self {
+    //         ChessType::King => 1,
+    //         ChessType::Advisor => 2,
+    //         ChessType::Bishop => 2,
+    //         ChessType::Knight => 5,
+    //         ChessType::Rook => 6,
+    //         ChessType::Cannon => 4,
+    //         ChessType::Pawn => 3,
+    //     }
+    // }
+
+    pub fn name_value(&self, input_type: Chess) -> &'static str {
+        match input_type {
+            Chess::None => match self {
+                ChessType::King => "帅",
+                ChessType::Advisor => "士",
+                ChessType::Bishop => "相",
+                ChessType::Knight => "马",
+                ChessType::Rook => "车",
+                ChessType::Cannon => "炮",
+                ChessType::Pawn => "兵",
+            },
+            _ => match self {
+                ChessType::King => "帅",
+                ChessType::Advisor => " ",
+                ChessType::Bishop => " ",
+                ChessType::Knight => " ",
+                ChessType::Rook => " ",
+                ChessType::Cannon => " ",
+                ChessType::Pawn => " ",
+            },
         }
     }
 }
@@ -121,6 +150,15 @@ impl Player {
 pub struct Position {
     pub row: i32,
     pub col: i32,
+}
+
+impl From<(i32, i32)> for Position {
+    fn from(value: (i32, i32)) -> Self {
+        Position {
+            row: value.1,
+            col: value.0,
+        }
+    }
 }
 
 impl Position {
@@ -207,6 +245,8 @@ pub struct Record {
 pub struct Board {
     // 9×10的棋盘，红方在下，黑方在上
     pub chesses: [[Chess; BOARD_WIDTH as usize]; BOARD_HEIGHT as usize],
+    // 是否揭开过
+    pub chesses_status: [[Chess; BOARD_WIDTH as usize]; BOARD_HEIGHT as usize],
     pub turn: Player,
     pub counter: i32,
     pub gen_counter: i32,
@@ -216,6 +256,9 @@ pub struct Board {
     pub zobrist_value: u64,
     pub zobrist_value_lock: u64,
     pub distance: i32,
+    pub select_pos: Position,
+    pub jieqi: bool,
+    pub robot: bool,
 }
 
 // 棋子是否在棋盘内
@@ -225,11 +268,7 @@ pub fn in_board(pos: Position) -> bool {
 
 // 棋子是否在玩家的楚河汉界以内
 pub fn in_country(row: i32, player: Player) -> bool {
-    let base_row = if player == Player::Red {
-        BOARD_HEIGHT - 1
-    } else {
-        0
-    };
+    let base_row = if player == Player::Red { BOARD_HEIGHT - 1 } else { 0 };
     (row - base_row).abs() < BOARD_HEIGHT / 2
 }
 
@@ -337,19 +376,141 @@ const INITIATIVE_BONUS: i32 = 3;
 
 const RECORD_NONE: Option<Record> = None;
 impl Board {
-    pub fn init() -> Self {
+    pub fn init(jieqi: bool, robot: bool) -> Self {
+        let black_chess: Vec<ChessType> = if jieqi {
+            Self::rand_init()
+        } else {
+            vec![
+                ChessType::Rook,
+                ChessType::Knight,
+                ChessType::Bishop,
+                ChessType::Advisor,
+                ChessType::Advisor,
+                ChessType::Bishop,
+                ChessType::Knight,
+                ChessType::Rook,
+                ChessType::Cannon,
+                ChessType::Cannon,
+                ChessType::Pawn,
+                ChessType::Pawn,
+                ChessType::Pawn,
+                ChessType::Pawn,
+                ChessType::Pawn,
+            ]
+        };
+        // println!("Random Integer Array: {:?}", black_chess);
+
+        let red_chess: Vec<ChessType> = if jieqi {
+            Self::rand_init()
+        } else {
+            vec![
+                ChessType::Pawn,
+                ChessType::Pawn,
+                ChessType::Pawn,
+                ChessType::Pawn,
+                ChessType::Pawn,
+                ChessType::Cannon,
+                ChessType::Cannon,
+                ChessType::Rook,
+                ChessType::Knight,
+                ChessType::Bishop,
+                ChessType::Advisor,
+                ChessType::Advisor,
+                ChessType::Bishop,
+                ChessType::Knight,
+                ChessType::Rook,
+            ]
+        };
+        // println!("Random Integer Array: {:?}", red_chess);
+
+        let black_chesses_status: Vec<Chess> = if jieqi {
+            vec![
+                Chess::Black(ChessType::Rook),
+                Chess::Black(ChessType::Knight),
+                Chess::Black(ChessType::Bishop),
+                Chess::Black(ChessType::Advisor),
+                Chess::Black(ChessType::Advisor),
+                Chess::Black(ChessType::Bishop),
+                Chess::Black(ChessType::Knight),
+                Chess::Black(ChessType::Rook),
+                Chess::Black(ChessType::Cannon),
+                Chess::Black(ChessType::Cannon),
+                Chess::Black(ChessType::Pawn),
+                Chess::Black(ChessType::Pawn),
+                Chess::Black(ChessType::Pawn),
+                Chess::Black(ChessType::Pawn),
+                Chess::Black(ChessType::Pawn),
+            ]
+        } else {
+            vec![
+                Chess::None,
+                Chess::None,
+                Chess::None,
+                Chess::None,
+                Chess::None,
+                Chess::None,
+                Chess::None,
+                Chess::None,
+                Chess::None,
+                Chess::None,
+                Chess::None,
+                Chess::None,
+                Chess::None,
+                Chess::None,
+                Chess::None,
+            ]
+        };
+
+        let red_chesses_status: Vec<Chess> = if jieqi {
+            vec![
+                Chess::Red(ChessType::Pawn),
+                Chess::Red(ChessType::Pawn),
+                Chess::Red(ChessType::Pawn),
+                Chess::Red(ChessType::Pawn),
+                Chess::Red(ChessType::Pawn),
+                Chess::Red(ChessType::Cannon),
+                Chess::Red(ChessType::Cannon),
+                Chess::Red(ChessType::Rook),
+                Chess::Red(ChessType::Knight),
+                Chess::Red(ChessType::Bishop),
+                Chess::Red(ChessType::Advisor),
+                Chess::Red(ChessType::Advisor),
+                Chess::Red(ChessType::Bishop),
+                Chess::Red(ChessType::Knight),
+                Chess::Red(ChessType::Rook),
+            ]
+        } else {
+            vec![
+                Chess::None,
+                Chess::None,
+                Chess::None,
+                Chess::None,
+                Chess::None,
+                Chess::None,
+                Chess::None,
+                Chess::None,
+                Chess::None,
+                Chess::None,
+                Chess::None,
+                Chess::None,
+                Chess::None,
+                Chess::None,
+                Chess::None,
+            ]
+        };
+
         let mut board = Board {
             chesses: [
                 [
-                    Chess::Black(ChessType::Rook),
-                    Chess::Black(ChessType::Knight),
-                    Chess::Black(ChessType::Bishop),
-                    Chess::Black(ChessType::Advisor),
+                    Chess::Black(black_chess[0]),
+                    Chess::Black(black_chess[1]),
+                    Chess::Black(black_chess[2]),
+                    Chess::Black(black_chess[3]),
                     Chess::Black(ChessType::King),
-                    Chess::Black(ChessType::Advisor),
-                    Chess::Black(ChessType::Bishop),
-                    Chess::Black(ChessType::Knight),
-                    Chess::Black(ChessType::Rook),
+                    Chess::Black(black_chess[4]),
+                    Chess::Black(black_chess[5]),
+                    Chess::Black(black_chess[6]),
+                    Chess::Black(black_chess[7]),
                 ],
                 [
                     Chess::None,
@@ -364,36 +525,25 @@ impl Board {
                 ],
                 [
                     Chess::None,
-                    Chess::Black(ChessType::Cannon),
+                    Chess::Black(black_chess[8]),
                     Chess::None,
                     Chess::None,
                     Chess::None,
                     Chess::None,
                     Chess::None,
-                    Chess::Black(ChessType::Cannon),
+                    Chess::Black(black_chess[9]),
                     Chess::None,
                 ],
                 [
-                    Chess::Black(ChessType::Pawn),
+                    Chess::Black(black_chess[10]),
                     Chess::None,
-                    Chess::Black(ChessType::Pawn),
+                    Chess::Black(black_chess[11]),
                     Chess::None,
-                    Chess::Black(ChessType::Pawn),
+                    Chess::Black(black_chess[12]),
                     Chess::None,
-                    Chess::Black(ChessType::Pawn),
+                    Chess::Black(black_chess[13]),
                     Chess::None,
-                    Chess::Black(ChessType::Pawn),
-                ],
-                [
-                    Chess::None,
-                    Chess::None,
-                    Chess::None,
-                    Chess::None,
-                    Chess::None,
-                    Chess::None,
-                    Chess::None,
-                    Chess::None,
-                    Chess::None,
+                    Chess::Black(black_chess[14]),
                 ],
                 [
                     Chess::None,
@@ -404,28 +554,6 @@ impl Board {
                     Chess::None,
                     Chess::None,
                     Chess::None,
-                    Chess::None,
-                ],
-                [
-                    Chess::Red(ChessType::Pawn),
-                    Chess::None,
-                    Chess::Red(ChessType::Pawn),
-                    Chess::None,
-                    Chess::Red(ChessType::Pawn),
-                    Chess::None,
-                    Chess::Red(ChessType::Pawn),
-                    Chess::None,
-                    Chess::Red(ChessType::Pawn),
-                ],
-                [
-                    Chess::None,
-                    Chess::Red(ChessType::Cannon),
-                    Chess::None,
-                    Chess::None,
-                    Chess::None,
-                    Chess::None,
-                    Chess::None,
-                    Chess::Red(ChessType::Cannon),
                     Chess::None,
                 ],
                 [
@@ -440,15 +568,160 @@ impl Board {
                     Chess::None,
                 ],
                 [
-                    Chess::Red(ChessType::Rook),
-                    Chess::Red(ChessType::Knight),
-                    Chess::Red(ChessType::Bishop),
-                    Chess::Red(ChessType::Advisor),
+                    Chess::Red(red_chess[0]),
+                    Chess::None,
+                    Chess::Red(red_chess[1]),
+                    Chess::None,
+                    Chess::Red(red_chess[2]),
+                    Chess::None,
+                    Chess::Red(red_chess[3]),
+                    Chess::None,
+                    Chess::Red(red_chess[4]),
+                ],
+                [
+                    Chess::None,
+                    Chess::Red(red_chess[5]),
+                    Chess::None,
+                    Chess::None,
+                    Chess::None,
+                    Chess::None,
+                    Chess::None,
+                    Chess::Red(red_chess[6]),
+                    Chess::None,
+                ],
+                [
+                    Chess::None,
+                    Chess::None,
+                    Chess::None,
+                    Chess::None,
+                    Chess::None,
+                    Chess::None,
+                    Chess::None,
+                    Chess::None,
+                    Chess::None,
+                ],
+                [
+                    Chess::Red(red_chess[7]),
+                    Chess::Red(red_chess[8]),
+                    Chess::Red(red_chess[9]),
+                    Chess::Red(red_chess[10]),
                     Chess::Red(ChessType::King),
-                    Chess::Red(ChessType::Advisor),
-                    Chess::Red(ChessType::Bishop),
-                    Chess::Red(ChessType::Knight),
-                    Chess::Red(ChessType::Rook),
+                    Chess::Red(red_chess[11]),
+                    Chess::Red(red_chess[12]),
+                    Chess::Red(red_chess[13]),
+                    Chess::Red(red_chess[14]),
+                ],
+            ],
+            chesses_status: [
+                [
+                    black_chesses_status[0],
+                    black_chesses_status[1],
+                    black_chesses_status[2],
+                    black_chesses_status[3],
+                    Chess::None,
+                    black_chesses_status[4],
+                    black_chesses_status[5],
+                    black_chesses_status[6],
+                    black_chesses_status[7],
+                ],
+                [
+                    Chess::None,
+                    Chess::None,
+                    Chess::None,
+                    Chess::None,
+                    Chess::None,
+                    Chess::None,
+                    Chess::None,
+                    Chess::None,
+                    Chess::None,
+                ],
+                [
+                    Chess::None,
+                    black_chesses_status[8],
+                    Chess::None,
+                    Chess::None,
+                    Chess::None,
+                    Chess::None,
+                    Chess::None,
+                    black_chesses_status[9],
+                    Chess::None,
+                ],
+                [
+                    black_chesses_status[10],
+                    Chess::None,
+                    black_chesses_status[11],
+                    Chess::None,
+                    black_chesses_status[12],
+                    Chess::None,
+                    black_chesses_status[13],
+                    Chess::None,
+                    black_chesses_status[14],
+                ],
+                [
+                    Chess::None,
+                    Chess::None,
+                    Chess::None,
+                    Chess::None,
+                    Chess::None,
+                    Chess::None,
+                    Chess::None,
+                    Chess::None,
+                    Chess::None,
+                ],
+                [
+                    Chess::None,
+                    Chess::None,
+                    Chess::None,
+                    Chess::None,
+                    Chess::None,
+                    Chess::None,
+                    Chess::None,
+                    Chess::None,
+                    Chess::None,
+                ],
+                [
+                    red_chesses_status[0],
+                    Chess::None,
+                    red_chesses_status[1],
+                    Chess::None,
+                    red_chesses_status[2],
+                    Chess::None,
+                    red_chesses_status[3],
+                    Chess::None,
+                    red_chesses_status[4],
+                ],
+                [
+                    Chess::None,
+                    red_chesses_status[5],
+                    Chess::None,
+                    Chess::None,
+                    Chess::None,
+                    Chess::None,
+                    Chess::None,
+                    red_chesses_status[6],
+                    Chess::None,
+                ],
+                [
+                    Chess::None,
+                    Chess::None,
+                    Chess::None,
+                    Chess::None,
+                    Chess::None,
+                    Chess::None,
+                    Chess::None,
+                    Chess::None,
+                    Chess::None,
+                ],
+                [
+                    red_chesses_status[7],
+                    red_chesses_status[8],
+                    red_chesses_status[9],
+                    red_chesses_status[10],
+                    Chess::None,
+                    red_chesses_status[11],
+                    red_chesses_status[12],
+                    red_chesses_status[13],
+                    red_chesses_status[14],
                 ],
             ],
             turn: Player::Red,
@@ -460,14 +733,53 @@ impl Board {
             zobrist_value: 0,
             zobrist_value_lock: 0,
             distance: 0,
+            select_pos: Position { row: 1, col: 1 },
+            jieqi: jieqi,
+            robot: robot,
         };
         board.zobrist_value = ZOBRIST_TABLE.calc_chesses(&board.chesses);
         board.zobrist_value_lock = ZOBRIST_TABLE_LOCK.calc_chesses(&board.chesses);
         board
     }
+    pub fn rand_init() -> Vec<ChessType> {
+        let mut rng = StdRng::from_entropy();
+        let mut unique_numbers = HashSet::new();
+
+        // Define the size of the integer array
+        let array_size = 15;
+
+        // 循环直到我们获得所需数量的唯一随机数
+        while unique_numbers.len() < array_size {
+            let num = rng.gen_range(0..127);
+            unique_numbers.insert(num); // HashSet会自动处理重复项
+        }
+
+        let rand_num: Vec<u32> = unique_numbers.into_iter().collect();
+        let indexed_values: Vec<(usize, u32)> = rand_num
+            .iter()
+            .enumerate() // 获取每个元素的索引和值
+            .map(|(index, &value)| (index, value)) // 创建元组 (index, value)
+            .collect();
+
+        // 对元组向量按值进行排序
+        let mut sorted_indexed_values = indexed_values.clone();
+        sorted_indexed_values.sort_by(|a, b| a.1.cmp(&b.1)); // 按照第二个元素（值）排序
+
+        // 提取排好序后的原索引
+        let sorted_indices: Vec<usize> = sorted_indexed_values
+            .iter()
+            .map(|&(index, _)| index) // 从元组中提取出原始索引
+            .collect();
+        let out: Vec<ChessType> = sorted_indices
+            .into_iter()
+            .map(move |t| ChessType::rand_value(t))
+            .collect();
+        out
+    }
     pub fn empty() -> Self {
         Board {
             chesses: [[Chess::None; BOARD_WIDTH as usize]; BOARD_HEIGHT as usize],
+            chesses_status: [[Chess::None; BOARD_WIDTH as usize]; BOARD_HEIGHT as usize],
             turn: Player::Red,
             counter: 0,
             gen_counter: 0,
@@ -477,25 +789,24 @@ impl Board {
             zobrist_value: 0,
             zobrist_value_lock: 0,
             distance: 0,
+            select_pos: Position { row: 1, col: 1 },
+            jieqi: false,
+            robot: false,
         }
     }
     pub fn from_fen(fen: &str) -> Self {
         let mut board = Board::empty();
         let mut parts = fen.split(" ");
-        let pos = parts
-            .next()
-            .unwrap();
+        let pos = parts.next().unwrap();
         let mut i = 0;
         for row in pos.split("/") {
             let mut j = 0;
             for col in row.chars() {
                 if col.is_numeric() {
-                    j += col
-                        .to_digit(10)
-                        .unwrap() as i32;
+                    j += col.to_digit(10).unwrap() as i32;
                 } else {
                     if let Some(chess) = (FEN_MAP).get(&col) {
-                        board.set_chess(Position::new(i, j), chess.to_owned());
+                        board.set_chess(Position::new(i, j), chess.to_owned(), false);
                     }
                     j += 1;
                 }
@@ -504,38 +815,36 @@ impl Board {
         }
         board.zobrist_value = ZOBRIST_TABLE.calc_chesses(&board.chesses);
         board.zobrist_value_lock = ZOBRIST_TABLE_LOCK.calc_chesses(&board.chesses);
-        let turn = parts
-            .next()
-            .unwrap();
+        let turn = parts.next().unwrap();
         if turn == "b" {
             board.turn = Player::Black;
         }
         board
     }
-    pub fn apply_move(&mut self, m: &Move) {
+    pub fn apply_move(&mut self, m: &Move, update_status: bool) {
         let chess = self.chess_at(m.from);
-        self.set_chess(m.to, chess);
-        self.set_chess(m.from, Chess::None);
+        // println!("enter apply_move {} {}", m.to.row, m.to.col);
+        self.set_chess(m.to, chess, update_status);
+        self.set_chess(m.from, Chess::None, update_status);
         self.zobrist_value = ZOBRIST_TABLE.apply_move(self.zobrist_value, m);
         self.zobrist_value_lock = ZOBRIST_TABLE_LOCK.apply_move(self.zobrist_value_lock, m);
         self.turn = m.player.next();
     }
-    pub fn do_move(&mut self, m: &Move) {
-        self.apply_move(m);
+    pub fn do_move(&mut self, m: &Move, update_status: bool) {
+        self.apply_move(m, update_status);
         self.distance += 1;
-        self.move_history
-            .push(m.clone());
+        self.move_history.push(m.clone());
     }
     pub fn undo_move(&mut self, m: &Move) {
+        // println!("enter undo_move {} {}", m.to.row, m.to.col);
         let chess = self.chess_at(m.to);
-        self.set_chess(m.from, chess);
-        self.set_chess(m.to, m.capture);
+        self.set_chess(m.from, chess, false);
+        self.set_chess(m.to, m.capture, false);
         self.zobrist_value = ZOBRIST_TABLE.undo_move(self.zobrist_value, m);
         self.zobrist_value_lock = ZOBRIST_TABLE_LOCK.undo_move(self.zobrist_value_lock, m);
         self.turn = m.player;
         self.distance -= 1;
-        self.move_history
-            .pop();
+        self.move_history.pop();
     }
     pub fn chess_at(&self, pos: Position) -> Chess {
         if in_board(pos) {
@@ -544,19 +853,22 @@ impl Board {
             Chess::None
         }
     }
-    pub fn set_chess(&mut self, pos: Position, chess: Chess) {
+    pub fn chess_status_at(&self, pos: Position) -> Chess {
+        if in_board(pos) {
+            self.chesses_status[pos.row as usize][pos.col as usize]
+        } else {
+            Chess::None
+        }
+    }
+    pub fn set_chess(&mut self, pos: Position, chess: Chess, update_status: bool) {
         self.chesses[pos.row as usize][pos.col as usize] = chess;
+        if update_status {
+            self.chesses_status[pos.row as usize][pos.col as usize] = Chess::None;
+        }
     }
     pub fn has_chess_between(&self, posa: Position, posb: Position) -> bool {
         if posa.row == posb.row {
-            for j in posa
-                .col
-                .min(posb.col)
-                + 1
-                ..posb
-                    .col
-                    .max(posa.col)
-            {
+            for j in posa.col.min(posb.col) + 1..posb.col.max(posa.col) {
                 if self
                     .chess_at(Position::new(posa.row, j))
                     .chess_type()
@@ -566,14 +878,7 @@ impl Board {
                 }
             }
         } else if posa.col == posb.col {
-            for i in posa
-                .row
-                .min(posb.row)
-                + 1
-                ..posb
-                    .row
-                    .max(posa.row)
-            {
+            for i in posa.row.min(posb.row) + 1..posb.row.max(posa.row) {
                 if self
                     .chess_at(Position::new(i, posa.col))
                     .chess_type()
@@ -606,12 +911,8 @@ impl Board {
         None
     }
     pub fn king_eye_to_eye(&self) -> bool {
-        let posa = self
-            .king_position(Player::Red)
-            .unwrap();
-        let posb = self
-            .king_position(Player::Black)
-            .unwrap();
+        let posa = self.king_position(Player::Red).unwrap();
+        let posb = self.king_position(Player::Black).unwrap();
         if posa.col == posb.col {
             !self.has_chess_between(posa, posb)
         } else {
@@ -619,21 +920,13 @@ impl Board {
         }
     }
     pub fn is_checked(&self, player: Player) -> bool {
-        let position_base = self
-            .king_position(player)
-            .unwrap();
+        let position_base = self.king_position(player).unwrap();
 
         // 是否被炮将军
         let targets = self.generate_move_for_chess_type(ChessType::Cannon, position_base);
         for pos in targets {
-            if self
-                .chess_at(pos)
-                .belong_to(player.next())
-            {
-                if let Some(ChessType::Cannon) = self
-                    .chess_at(pos)
-                    .chess_type()
-                {
+            if self.chess_at(pos).belong_to(player.next()) {
+                if let Some(ChessType::Cannon) = self.chess_at(pos).chess_type() {
                     return true;
                 }
             }
@@ -641,14 +934,8 @@ impl Board {
         // 是否被车将军
         let targets = self.generate_move_for_chess_type(ChessType::Rook, position_base);
         for pos in targets {
-            if self
-                .chess_at(pos)
-                .belong_to(player.next())
-            {
-                if let Some(ChessType::Rook) = self
-                    .chess_at(pos)
-                    .chess_type()
-                {
+            if self.chess_at(pos).belong_to(player.next()) {
+                if let Some(ChessType::Rook) = self.chess_at(pos).chess_type() {
                     return true;
                 }
             }
@@ -656,83 +943,25 @@ impl Board {
 
         // 是否被马将军
         let mut targets = vec![];
-        if self.chess_at(
-            position_base
-                .up(1)
-                .left(1),
-        ) == Chess::None
-        {
-            targets.push(
-                position_base
-                    .up(2)
-                    .left(1),
-            );
-            targets.push(
-                position_base
-                    .up(1)
-                    .left(2),
-            );
+        if self.chess_at(position_base.up(1).left(1)) == Chess::None {
+            targets.push(position_base.up(2).left(1));
+            targets.push(position_base.up(1).left(2));
         }
-        if self.chess_at(
-            position_base
-                .down(1)
-                .left(1),
-        ) == Chess::None
-        {
-            targets.push(
-                position_base
-                    .down(2)
-                    .left(1),
-            );
-            targets.push(
-                position_base
-                    .down(1)
-                    .left(2),
-            );
+        if self.chess_at(position_base.down(1).left(1)) == Chess::None {
+            targets.push(position_base.down(2).left(1));
+            targets.push(position_base.down(1).left(2));
         }
-        if self.chess_at(
-            position_base
-                .up(1)
-                .right(1),
-        ) == Chess::None
-        {
-            targets.push(
-                position_base
-                    .up(2)
-                    .right(1),
-            );
-            targets.push(
-                position_base
-                    .up(1)
-                    .right(2),
-            );
+        if self.chess_at(position_base.up(1).right(1)) == Chess::None {
+            targets.push(position_base.up(2).right(1));
+            targets.push(position_base.up(1).right(2));
         }
-        if self.chess_at(
-            position_base
-                .down(1)
-                .right(1),
-        ) == Chess::None
-        {
-            targets.push(
-                position_base
-                    .down(2)
-                    .right(1),
-            );
-            targets.push(
-                position_base
-                    .down(1)
-                    .right(2),
-            );
+        if self.chess_at(position_base.down(1).right(1)) == Chess::None {
+            targets.push(position_base.down(2).right(1));
+            targets.push(position_base.down(1).right(2));
         }
         for pos in targets {
-            if self
-                .chess_at(pos)
-                .belong_to(player.next())
-            {
-                if let Some(ChessType::Knight) = self
-                    .chess_at(pos)
-                    .chess_type()
-                {
+            if self.chess_at(pos).belong_to(player.next()) {
+                if let Some(ChessType::Knight) = self.chess_at(pos).chess_type() {
                     return true;
                 }
             }
@@ -748,25 +977,15 @@ impl Board {
                 position_base.down(1)
             },
         ] {
-            if self
-                .chess_at(pos)
-                .belong_to(player.next())
-            {
-                if let Some(ChessType::Pawn) = self
-                    .chess_at(pos)
-                    .chess_type()
-                {
+            if self.chess_at(pos).belong_to(player.next()) {
+                if let Some(ChessType::Pawn) = self.chess_at(pos).chess_type() {
                     return true;
                 }
             }
         }
         return self.king_eye_to_eye();
     }
-    pub fn generate_move_for_chess_type(
-        &self,
-        ct: ChessType,
-        position_base: Position,
-    ) -> Vec<Position> {
+    pub fn generate_move_for_chess_type(&self, ct: ChessType, position_base: Position) -> Vec<Position> {
         let mut targets = vec![];
         match ct {
             ChessType::King => {
@@ -779,146 +998,54 @@ impl Board {
             }
             ChessType::Advisor => {
                 targets.append(&mut vec![
-                    position_base
-                        .up(1)
-                        .left(1),
-                    position_base
-                        .up(1)
-                        .right(1),
-                    position_base
-                        .down(1)
-                        .left(1),
-                    position_base
-                        .down(1)
-                        .right(1),
+                    position_base.up(1).left(1),
+                    position_base.up(1).right(1),
+                    position_base.down(1).left(1),
+                    position_base.down(1).right(1),
                 ]);
             }
             ChessType::Bishop => {
-                if self.chess_at(
-                    position_base
-                        .up(1)
-                        .left(1),
-                ) == Chess::None
-                {
-                    targets.push(
-                        position_base
-                            .up(2)
-                            .left(2),
-                    );
+                if self.chess_at(position_base.up(1).left(1)) == Chess::None {
+                    targets.push(position_base.up(2).left(2));
                 }
-                if self.chess_at(
-                    position_base
-                        .up(1)
-                        .right(1),
-                ) == Chess::None
-                {
-                    targets.push(
-                        position_base
-                            .up(2)
-                            .right(2),
-                    );
+                if self.chess_at(position_base.up(1).right(1)) == Chess::None {
+                    targets.push(position_base.up(2).right(2));
                 }
-                if self.chess_at(
-                    position_base
-                        .down(1)
-                        .left(1),
-                ) == Chess::None
-                {
-                    targets.push(
-                        position_base
-                            .down(2)
-                            .left(2),
-                    );
+                if self.chess_at(position_base.down(1).left(1)) == Chess::None {
+                    targets.push(position_base.down(2).left(2));
                 }
-                if self.chess_at(
-                    position_base
-                        .down(1)
-                        .right(1),
-                ) == Chess::None
-                {
-                    targets.push(
-                        position_base
-                            .down(2)
-                            .right(2),
-                    );
+                if self.chess_at(position_base.down(1).right(1)) == Chess::None {
+                    targets.push(position_base.down(2).right(2));
                 }
             }
             ChessType::Knight => {
                 if self.turn == Player::Red {
                     if self.chess_at(position_base.up(1)) == Chess::None {
-                        targets.push(
-                            position_base
-                                .up(2)
-                                .left(1),
-                        );
-                        targets.push(
-                            position_base
-                                .up(2)
-                                .right(1),
-                        );
+                        targets.push(position_base.up(2).left(1));
+                        targets.push(position_base.up(2).right(1));
                     }
                     if self.chess_at(position_base.down(1)) == Chess::None {
-                        targets.push(
-                            position_base
-                                .down(2)
-                                .left(1),
-                        );
-                        targets.push(
-                            position_base
-                                .down(2)
-                                .right(1),
-                        );
+                        targets.push(position_base.down(2).left(1));
+                        targets.push(position_base.down(2).right(1));
                     }
                 } else {
                     if self.chess_at(position_base.down(1)) == Chess::None {
-                        targets.push(
-                            position_base
-                                .down(2)
-                                .left(1),
-                        );
-                        targets.push(
-                            position_base
-                                .down(2)
-                                .right(1),
-                        );
+                        targets.push(position_base.down(2).left(1));
+                        targets.push(position_base.down(2).right(1));
                     }
                     if self.chess_at(position_base.up(1)) == Chess::None {
-                        targets.push(
-                            position_base
-                                .up(2)
-                                .left(1),
-                        );
-                        targets.push(
-                            position_base
-                                .up(2)
-                                .right(1),
-                        );
+                        targets.push(position_base.up(2).left(1));
+                        targets.push(position_base.up(2).right(1));
                     }
                 }
 
                 if self.chess_at(position_base.left(1)) == Chess::None {
-                    targets.push(
-                        position_base
-                            .up(1)
-                            .left(2),
-                    );
-                    targets.push(
-                        position_base
-                            .down(1)
-                            .left(2),
-                    );
+                    targets.push(position_base.up(1).left(2));
+                    targets.push(position_base.down(1).left(2));
                 }
                 if self.chess_at(position_base.right(1)) == Chess::None {
-                    targets.push(
-                        position_base
-                            .up(1)
-                            .right(2),
-                    );
-                    targets.push(
-                        position_base
-                            .down(1)
-                            .right(2),
-                    );
+                    targets.push(position_base.up(1).right(2));
+                    targets.push(position_base.down(1).right(2));
                 }
             }
             ChessType::Rook => {
@@ -1040,9 +1167,15 @@ impl Board {
                 let position_base = Position::new(i, j);
                 // 遍历每个行棋方的棋
                 let chess = self.chess_at(position_base);
+                let chess_status = self.chess_status_at(position_base);
                 if chess.belong_to(self.turn) {
                     if let Some(ct) = chess.chess_type() {
-                        let targets = self.generate_move_for_chess_type(ct, position_base);
+                        let targets = if let Some(ct_status) = chess_status.chess_type() {
+                            // println!("ct status = {}", ct_status.name_value(Chess::None));
+                            self.generate_move_for_chess_type(ct_status, position_base)
+                        } else {
+                            self.generate_move_for_chess_type(ct, position_base)
+                        };
                         let move_base = Move {
                             player: self.turn,
                             from: position_base,
@@ -1062,17 +1195,10 @@ impl Board {
                             };
 
                             if valid {
-                                if !self
-                                    .chess_at(target)
-                                    .belong_to(self.turn)
-                                    && (!capture_only
-                                        || self
-                                            .chess_at(target)
-                                            .chess_type()
-                                            .is_some())
+                                if !self.chess_at(target).belong_to(self.turn)
+                                    && (!capture_only || self.chess_at(target).chess_type().is_some())
                                 {
-                                    moves
-                                        .push(move_base.with_target(target, self.chess_at(target)));
+                                    moves.push(move_base.with_target(target, self.chess_at(target)));
                                 }
                             }
                         }
@@ -1081,20 +1207,8 @@ impl Board {
             }
         }
         moves.sort_by(|a, b| {
-            (self
-                .chess_at(b.to)
-                .value()
-                - self
-                    .chess_at(b.from)
-                    .value())
-            .cmp(
-                &(self
-                    .chess_at(a.to)
-                    .value()
-                    - self
-                        .chess_at(a.from)
-                        .value()),
-            )
+            (self.chess_at(b.to).value() - self.chess_at(b.from).value())
+                .cmp(&(self.chess_at(a.to).value() - self.chess_at(a.from).value()))
         });
         moves
     }
@@ -1113,9 +1227,7 @@ impl Board {
                     };
                     let score = match ct {
                         ChessType::King => KING_VALUE_TABLE[pos.row as usize][pos.col as usize],
-                        ChessType::Advisor => {
-                            ADVISOR_VALUE_TABLE[pos.row as usize][pos.col as usize]
-                        }
+                        ChessType::Advisor => ADVISOR_VALUE_TABLE[pos.row as usize][pos.col as usize],
                         ChessType::Bishop => BISHOP_VALUE_TABLE[pos.row as usize][pos.col as usize],
                         ChessType::Knight => KNIGHT_VALUE_TABLE[pos.row as usize][pos.col as usize],
                         ChessType::Rook => ROOK_VALUE_TABLE[pos.row as usize][pos.col as usize],
@@ -1137,9 +1249,7 @@ impl Board {
         }
     }
     pub fn find_record(&self) -> Option<Record> {
-        if let Some(record) =
-            &self.records[(self.zobrist_value & (RECORD_SIZE - 1) as u64) as usize]
-        {
+        if let Some(record) = &self.records[(self.zobrist_value & (RECORD_SIZE - 1) as u64) as usize] {
             if record.zobrist_lock == self.zobrist_value_lock && self.turn == record.turn {
                 Some(record.clone())
             } else {
@@ -1150,13 +1260,10 @@ impl Board {
         }
     }
     pub fn add_record(&mut self, record: Record) {
-        if let Some(old_record) =
-            &self.records[(self.zobrist_value & (RECORD_SIZE - 1) as u64) as usize]
-        {
+        if let Some(old_record) = &self.records[(self.zobrist_value & (RECORD_SIZE - 1) as u64) as usize] {
             // 如果已存在，用深度较大的覆盖，depth越小，深度越大
             if record.depth < old_record.depth {
-                self.records[(self.zobrist_value & (RECORD_SIZE - 1) as u64) as usize] =
-                    Some(record);
+                self.records[(self.zobrist_value & (RECORD_SIZE - 1) as u64) as usize] = Some(record);
             }
         } else {
             self.records[(self.zobrist_value & (RECORD_SIZE - 1) as u64) as usize] = Some(record);
@@ -1177,15 +1284,8 @@ impl Board {
         // 优先尝试迭代深度搜索的上一层搜索结果
         let mut moves = self.generate_move(false);
         // 如果符合上次搜索的着法线路，那么优先按此线路搜索下去
-        for (i, m) in self
-            .best_moves_last
-            .iter()
-            .enumerate()
-        {
-            if let Some(ml) = self
-                .move_history
-                .get(i)
-            {
+        for (i, m) in self.best_moves_last.iter().enumerate() {
+            if let Some(ml) = self.move_history.get(i) {
                 if m != ml {
                     break;
                 }
@@ -1196,7 +1296,7 @@ impl Board {
         }
         let mut best_move = None;
         for m in moves {
-            self.do_move(&m);
+            self.do_move(&m, false);
             if self.is_checked(self.turn.next()) {
                 self.undo_move(&m);
                 continue;
@@ -1258,7 +1358,7 @@ impl Board {
             self.generate_move(true)
         };
         for m in moves {
-            self.do_move(&m);
+            self.do_move(&m, false);
             if self.is_checked(self.turn.next()) {
                 self.undo_move(&m);
                 continue;
@@ -1284,8 +1384,7 @@ impl Board {
                     return (v, bm);
                 }
                 self.best_moves_last = vec![];
-                self.best_moves_last
-                    .reverse();
+                self.best_moves_last.reverse();
                 println!("第{}层: {:?}", depth, self.best_moves_last);
             }
         } else {
@@ -1306,12 +1405,7 @@ mod tests {
         for i in 0..1_000 {
             board.generate_move(false);
         }
-        assert_eq!(
-            Board::init()
-                .generate_move(false)
-                .len(),
-            5 + 24 + 4 + 4 + 4 + 2 + 1
-        );
+        assert_eq!(Board::init().generate_move(false).len(), 5 + 24 + 4 + 4 + 4 + 2 + 1);
     }
     #[test]
     fn test_is_checked() {
@@ -1319,12 +1413,7 @@ mod tests {
         for _i in 0..10_000 {
             board.is_checked(Player::Red);
         }
-        assert_eq!(
-            Board::init()
-                .generate_move(false)
-                .len(),
-            5 + 24 + 4 + 4 + 4 + 2 + 1
-        );
+        assert_eq!(Board::init().generate_move(false).len(), 5 + 24 + 4 + 4 + 4 + 2 + 1);
     }
     #[test]
     fn test_move_and_unmove() {
@@ -1337,27 +1426,25 @@ mod tests {
                 chess: Chess::Red(ChessType::Rook),
                 capture: Chess::None,
             };
-            board.apply_move(&m);
+            board.apply_move(&m, false);
             board.undo_move(&m);
         }
-        assert_eq!(
-            Board::init()
-                .generate_move(false)
-                .len(),
-            5 + 24 + 4 + 4 + 4 + 2 + 1
-        );
+        assert_eq!(Board::init().generate_move(false).len(), 5 + 24 + 4 + 4 + 4 + 2 + 1);
     }
 
     #[test]
     fn test_evaluate() {
         let mut board = Board::init();
-        board.apply_move(&Move {
-            player: Player::Red,
-            from: Position { row: 9, col: 8 },
-            to: Position { row: 7, col: 8 },
-            chess: Chess::Red(ChessType::Rook),
-            capture: Chess::None,
-        });
+        board.apply_move(
+            &Move {
+                player: Player::Red,
+                from: Position { row: 9, col: 8 },
+                to: Position { row: 7, col: 8 },
+                chess: Chess::Red(ChessType::Rook),
+                capture: Chess::None,
+            },
+            false,
+        );
         for i in 0..10_000 {
             board.evaluate(Player::Red);
         }
@@ -1380,8 +1467,7 @@ mod tests {
 
     #[test]
     fn test_from_fen() {
-        let fen =
-            "rnb1kabnr/4a4/1c5c1/p1p3p2/4N4/8p/P1P3P1P/2C4C1/9/RNBAKAB1R w - - 0 1 moves e5d7";
+        let fen = "rnb1kabnr/4a4/1c5c1/p1p3p2/4N4/8p/P1P3P1P/2C4C1/9/RNBAKAB1R w - - 0 1 moves e5d7";
         println!("{:?}", Board::from_fen(fen).chesses);
     }
 

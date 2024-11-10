@@ -1,3 +1,6 @@
-# 中国象棋
+# Chinese Chess with Rust
+two playing mode with CLI args:
+- basic
+- JIEQI
 
-![Alt text](imgs/image.png)
+also support playing w/ or w/o robot.
