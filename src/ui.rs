@@ -1,4 +1,4 @@
-use engine::board::{Board, Move, Player, Position, BOARD_HEIGHT, BOARD_WIDTH};
+use engine::board::{Board, Player, BOARD_HEIGHT, BOARD_WIDTH};
 use fltk::{
     app,
     button::Button,
@@ -49,7 +49,7 @@ pub fn ui(mut game: Board) -> anyhow::Result<()> {
                 let chess_status = game.chesses_status[y][x];
 
                 let title = match chess.chess_type() {
-                    Some(t) => t.name_value(chess_status),
+                    Some(t) => t.name_value(chess_status, chess.player()),
                     None => continue,
                 };
 
@@ -68,7 +68,7 @@ pub fn ui(mut game: Board) -> anyhow::Result<()> {
                 button.set_label_color(if let Some(Player::Red) = chess.player() {
                     Color::Red
                 } else {
-                    Color::Blue
+                    Color::Black
                 });
 
                 button.set_label_size((CHESS_SIZE * 6 / 10) as i32);
@@ -100,86 +100,20 @@ pub fn ui(mut game: Board) -> anyhow::Result<()> {
         }
         false
     });
-    let mut vpack = Pack::default_fill().with_type(PackType::Vertical);
-    vpack.set_spacing(10);
-    flex.add(&vpack);
-    Button::default().with_label("悔棋");
-    Button::default().with_label("功能");
-    Button::default().with_label("功能");
-    Button::default().with_label("功能");
-    Button::default().with_label("功能");
-    vpack.end();
-    vpack.auto_layout();
-    flex.fixed(&Group::default().with_size(10, 10), 10);
-    flex.end();
+    // let mut vpack = Pack::default_fill().with_type(PackType::Vertical);
+    // vpack.set_spacing(10);
+    // flex.add(&vpack);
+    // Button::default().with_label("悔棋");
+    // Button::default().with_label("功能");
+    // Button::default().with_label("功能");
+    // Button::default().with_label("功能");
+    // Button::default().with_label("功能");
+    // vpack.end();
+    // vpack.auto_layout();
+    // flex.fixed(&Group::default().with_size(10, 10), 10);
+    // flex.end();
     top_window.end();
     top_window.show();
     app.run().unwrap();
     Ok(())
-}
-
-trait BoardExt {
-    fn click(&mut self, pos: (i32, i32));
-    fn select(&mut self, pos: (i32, i32)) -> bool;
-    fn move_to(
-        &mut self,
-        from: Position, // 起手位置
-        to: Position,   // 落子位置
-    );
-
-    fn robot_move(&mut self) -> bool;
-}
-
-impl BoardExt for Board {
-    fn click(&mut self, pos: (i32, i32)) {
-        let selected = self.select(pos);
-        if !selected && self.chess_at(self.select_pos).player() == Some(self.turn) {
-            self.move_to(self.select_pos, pos.into());
-        }
-    }
-    fn robot_move(&mut self) -> bool {
-        if !(self.robot) {
-            return false;
-        }
-        if self.turn == Player::Red {
-            return false;
-        }
-
-        let (_value, best_move) = self.iterative_deepening(3);
-        if let Some(m) = best_move {
-            if m.is_valid() {
-                self.do_move(&m, self.jieqi);
-                return true;
-            }
-        }
-        unreachable!();
-    }
-
-    fn select(&mut self, pos: (i32, i32)) -> bool {
-        let chess = self.chess_at(pos.into());
-
-        if chess.player() == Some(self.turn) {
-            self.select_pos = pos.into();
-            return true;
-        }
-
-        false
-    }
-
-    fn move_to(
-        &mut self,
-        from: Position, // 起手位置
-        to: Position,   // 落子位置
-    ) {
-        self.do_move(
-            &Move {
-                player: self.turn,
-                from,
-                to,
-                chess: self.chess_at(from),
-                capture: self.chess_at(to),
-            },
-            self.jieqi,
-        );
-    }
 }

@@ -99,10 +99,13 @@ impl ChessType {
     //     }
     // }
 
-    pub fn name_value(&self, input_type: Chess) -> &'static str {
+    pub fn name_value(&self, input_type: Chess, player: Option<Player>) -> &'static str {
         match input_type {
             Chess::None => match self {
-                ChessType::King => "帅",
+                ChessType::King => match player {
+                    Some(Player::Black) => "将",
+                    _ => "帅",
+                },
                 ChessType::Advisor => "士",
                 ChessType::Bishop => "相",
                 ChessType::Knight => "马",
@@ -111,7 +114,10 @@ impl ChessType {
                 ChessType::Pawn => "兵",
             },
             _ => match self {
-                ChessType::King => "帅",
+                ChessType::King => match player {
+                    Some(Player::Black) => "将",
+                    _ => "帅",
+                },
                 ChessType::Advisor => " ",
                 ChessType::Bishop => " ",
                 ChessType::Knight => " ",
@@ -190,6 +196,7 @@ pub struct Move {
     pub chess: Chess,   // 记录一下运的子，如果后面没用到就删了
     pub capture: Chess, // 这一步吃的子
 }
+
 impl Move {
     pub fn stay() -> Move {
         Move {
@@ -846,6 +853,56 @@ impl Board {
         self.distance -= 1;
         self.move_history.pop();
     }
+    pub fn click(&mut self, pos: (i32, i32)) {
+        let selected = self.select(pos);
+        if !selected && self.chess_at(self.select_pos).player() == Some(self.turn) {
+            self.move_to(self.select_pos, pos.into());
+        }
+    }
+    pub fn robot_move(&mut self) -> bool {
+        if !(self.robot) {
+            return false;
+        }
+        if self.turn == Player::Red {
+            return false;
+        }
+
+        let (_value, best_move) = self.iterative_deepening(3);
+        if let Some(m) = best_move {
+            if m.is_valid() {
+                self.do_move(&m, self.jieqi);
+                return true;
+            }
+        }
+        unreachable!();
+    }
+    pub fn select(&mut self, pos: (i32, i32)) -> bool {
+        let chess = self.chess_at(pos.into());
+
+        if chess.player() == Some(self.turn) {
+            self.select_pos = pos.into();
+            return true;
+        }
+
+        false
+    }
+    pub fn move_to(
+        &mut self,
+        from: Position, // 起手位置
+        to: Position,   // 落子位置
+    ) {
+        self.do_move(
+            &Move {
+                player: self.turn,
+                from,
+                to,
+                chess: self.chess_at(from),
+                capture: self.chess_at(to),
+            },
+            self.jieqi,
+        );
+    }
+
     pub fn chess_at(&self, pos: Position) -> Chess {
         if in_board(pos) {
             self.chesses[pos.row as usize][pos.col as usize]
@@ -1171,7 +1228,6 @@ impl Board {
                 if chess.belong_to(self.turn) {
                     if let Some(ct) = chess.chess_type() {
                         let targets = if let Some(ct_status) = chess_status.chess_type() {
-                            // println!("ct status = {}", ct_status.name_value(Chess::None));
                             self.generate_move_for_chess_type(ct_status, position_base)
                         } else {
                             self.generate_move_for_chess_type(ct, position_base)
