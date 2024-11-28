@@ -88,7 +88,7 @@ pub fn ui(mut game: Board) -> anyhow::Result<()> {
         if let Event::Push = event {
             let (click_x, click_y) = app::event_coords();
             let (x, y) = (click_x / CHESS_SIZE as i32, click_y / CHESS_SIZE as i32);
-            dbg!(x, y);
+            // dbg!(x, y);
             // 点击棋盘
             game.click((x, y));
             group.clear();

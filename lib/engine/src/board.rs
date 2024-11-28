@@ -405,7 +405,7 @@ impl Board {
                 ChessType::Pawn,
             ]
         };
-        // println!("Random Integer Array: {:?}", black_chess);
+        // println!("Random BLACK Integer Array: {:?}", black_chess);
 
         let red_chess: Vec<ChessType> = if jieqi {
             Self::rand_init()
@@ -428,7 +428,7 @@ impl Board {
                 ChessType::Rook,
             ]
         };
-        // println!("Random Integer Array: {:?}", red_chess);
+        // println!("Random RED Integer Array: {:?}", red_chess);
 
         let black_chesses_status: Vec<Chess> = if jieqi {
             vec![
@@ -891,18 +891,88 @@ impl Board {
         from: Position, // 起手位置
         to: Position,   // 落子位置
     ) {
-        self.do_move(
-            &Move {
-                player: self.turn,
-                from,
-                to,
-                chess: self.chess_at(from),
-                capture: self.chess_at(to),
+        // check if the move is legal
+        let current_chess = match self.chess_status_at(from) {
+            Chess::None => match self.chess_at(from) {
+                Chess::None => Chess::None,
+                t => t,
             },
-            self.jieqi,
-        );
+            t => t,
+        };
+        if let Some(ct) = current_chess.chess_type() {
+            let possible_to = self.generate_move_for_chess_type(ct, from);
+            if (possible_to.iter().any(|&t| t == to)) {
+                self.do_move(
+                    &Move {
+                        player: self.turn,
+                        from,
+                        to,
+                        chess: self.chess_at(from),
+                        capture: self.chess_at(to),
+                    },
+                    self.jieqi,
+                );
+                self.get_lost_chess();
+            }
+        };
     }
-
+    pub fn get_lost_chess(&self) {
+        let mut red_chess_nums = [1, 2, 2, 2, 2, 2, 5];
+        let mut black_chess_nums = [1, 2, 2, 2, 2, 2, 5];
+        let chess_order = [
+            ChessType::King,
+            ChessType::Advisor,
+            ChessType::Bishop,
+            ChessType::Knight,
+            ChessType::Rook,
+            ChessType::Cannon,
+            ChessType::Pawn,
+        ];
+        for i in 0..(BOARD_HEIGHT as usize) {
+            for j in 0..(BOARD_WIDTH as usize) {
+                match self.chesses[i][j] {
+                    Chess::None => (),
+                    Chess::Red(t) => match t {
+                        ChessType::King => red_chess_nums[0] -= 1,
+                        ChessType::Advisor => red_chess_nums[1] -= 1,
+                        ChessType::Bishop => red_chess_nums[2] -= 1,
+                        ChessType::Knight => red_chess_nums[3] -= 1,
+                        ChessType::Rook => red_chess_nums[4] -= 1,
+                        ChessType::Cannon => red_chess_nums[5] -= 1,
+                        ChessType::Pawn => red_chess_nums[6] -= 1,
+                    },
+                    Chess::Black(t) => match t {
+                        ChessType::King => black_chess_nums[0] -= 1,
+                        ChessType::Advisor => black_chess_nums[1] -= 1,
+                        ChessType::Bishop => black_chess_nums[2] -= 1,
+                        ChessType::Knight => black_chess_nums[3] -= 1,
+                        ChessType::Rook => black_chess_nums[4] -= 1,
+                        ChessType::Cannon => black_chess_nums[5] -= 1,
+                        ChessType::Pawn => black_chess_nums[6] -= 1,
+                    },
+                }
+            }
+        }
+        if red_chess_nums[0] > 0 {
+            println!("red lost");
+            return;
+        }
+        if black_chess_nums[0] > 0 {
+            println!("black lost");
+            return;
+        }
+        for i in 1..7 {
+            if red_chess_nums[i] > 0 {
+                println!("{}-{:?}", red_chess_nums[i], Chess::Red(chess_order[i]));
+            };
+        }
+        for i in 1..7 {
+            if black_chess_nums[i] > 0 {
+                println!("{}-{:?}", black_chess_nums[i], Chess::Black(chess_order[i]));
+            };
+        }
+        println!("---------------\n");
+    }
     pub fn chess_at(&self, pos: Position) -> Chess {
         if in_board(pos) {
             self.chesses[pos.row as usize][pos.col as usize]
